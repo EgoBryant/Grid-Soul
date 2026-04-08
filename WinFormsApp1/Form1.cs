@@ -15,10 +15,13 @@ namespace WinFormsApp1
         {
             this.DoubleBuffered = true;
             this.ClientSize = new Size(800, 600);
-            this.BackColor = Color.FromArgb(30, 30, 30);
+            this.BackColor = Color.FromArgb(20, 20, 25);
+            this.Text = "Grid Soul - Level " + _model.Level;
+
             _timer.Interval = 20;
             _timer.Tick += (s, e) => { UpdateInput(); _model.Update(); Invalidate(); };
             _timer.Start();
+
             this.KeyDown += (s, e) => _keys.Add(e.KeyCode);
             this.KeyUp += (s, e) => _keys.Remove(e.KeyCode);
         }
@@ -39,20 +42,24 @@ namespace WinFormsApp1
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            foreach (var b in _model.Bullets) g.FillEllipse(Brushes.Gold, b.X, b.Y, 8, 8);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            foreach (var p in _model.Particles) g.FillRectangle(Brushes.OrangeRed, p.X, p.Y, 3, 3);
+            foreach (var b in _model.Bullets) g.FillEllipse(Brushes.Cyan, b.X, b.Y, 8, 8);
             foreach (var en in _model.Enemies)
             {
-                g.FillRectangle(Brushes.Crimson, en.X, en.Y, 30, 30);
-                g.FillRectangle(Brushes.Lime, en.X, en.Y - 10, (en.HP / 30f) * 30, 5);
+                g.FillRectangle(Brushes.Red, en.X, en.Y, 30, 30);
+                g.DrawRectangle(Pens.White, en.X, en.Y, 30, 30);
             }
-            g.FillEllipse(Brushes.DeepSkyBlue, _model.Hero.X, _model.Hero.Y, 30, 30);
+            g.FillEllipse(Brushes.White, _model.Hero.X, _model.Hero.Y, 30, 30);
 
-            // Èםעונפויס חהמנמגüÿ
-            g.FillRectangle(Brushes.DarkRed, 10, 10, 200, 20);
-            g.FillRectangle(Brushes.Red, 10, 10, Math.Max(0, _model.Hero.HP * 2), 20);
+            // Èםעונפויס
+            g.DrawString($"Level: {_model.Level}   Score: {_model.Hero.Score}", new Font("Consolas", 14), Brushes.White, 10, 40);
+            g.FillRectangle(Brushes.DimGray, 10, 10, 200, 15);
+            g.FillRectangle(Brushes.LimeGreen, 10, 10, Math.Max(0, _model.Hero.HP * 2), 15);
 
             if (_model.Hero.HP <= 0)
-                g.DrawString("GAME OVER", new Font("Arial", 40), Brushes.White, 250, 250);
+                g.DrawString("GAME OVER", new Font("Consolas", 40, FontStyle.Bold), Brushes.Red, 250, 250);
         }
     }
 }
