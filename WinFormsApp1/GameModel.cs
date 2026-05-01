@@ -291,7 +291,7 @@ namespace WinFormsApp1
             powerUpTimer++;
             levelSpawnTimer++;
 
-            int spawnRate = Math.Max(25, 90 - CampaignLevel * 8);
+            int spawnRate = CampaignLevel == 2 ? 28 : Math.Max(25, 90 - CampaignLevel * 8);
             if (enemiesSpawned < spawnTarget && levelSpawnTimer >= spawnRate)
             {
                 levelSpawnTimer = 0;
@@ -576,7 +576,7 @@ namespace WinFormsApp1
                             direction.Y,
                             true,
                             e.Type == EnemyType.Chariot ? 5.3f : 4.2f,
-                            1,
+                            e.Type == EnemyType.Chariot ? 2 : 1,
                             0,
                             false,
                             3);
@@ -797,7 +797,7 @@ namespace WinFormsApp1
                     break;
                 case 2:
                     currentEnemyType = EnemyType.Warrior;
-                    spawnTarget = 15;
+                    spawnTarget = 38;
                     CurrentWeapon = WeaponType.Spear;
                     LevelTitle = GetLevelTitle(2);
                     break;
@@ -931,9 +931,9 @@ namespace WinFormsApp1
             }
             else if (type == EnemyType.Chariot)
             {
-                // Уровень 3: Колесницы - на 25% чаще (112 фреймов вместо 150)
-                enemy.Speed = 4.1f;
-                enemy.HP = 5;
+                // Уровень 3: Колесницы - быстрее и сильнее
+                enemy.Speed = 5.2f;
+                enemy.HP = 6;
                 enemy.ShootTimer = 112;
             }
             else if (type == EnemyType.Praetorian)
@@ -1144,7 +1144,7 @@ namespace WinFormsApp1
                 if (slashArea.IntersectsWith(enemies[i].Bounds) ||
                     Distance(GetCenter(slashArea), GetCenter(enemies[i].Bounds)) <= radius / 2)
                 {
-                    TakeDamageAt(i, 6);
+                    TakeDamageAt(i, 2);
                 }
             }
         }
@@ -1195,18 +1195,18 @@ namespace WinFormsApp1
 
             if (bulletType == 1)
             {
-                width = 20;
-                height = 8;
+                width = 30;
+                height = 10;
             }
             else if (bulletType == 2)
             {
-                width = 22;
-                height = 8;
+                width = 40;
+                height = 12;
             }
             else if (bulletType == 3)
             {
-                width = 18;
-                height = 5;
+                width = 20;
+                height = 6;
             }
 
             bullets.Add(new Bullet
