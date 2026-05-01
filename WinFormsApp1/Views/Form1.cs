@@ -258,7 +258,7 @@ namespace WinFormsApp1
             DrawBackground(g, backgroundKey);
 
             using (Font titleFont = new Font("Consolas", 34, FontStyle.Bold))
-            using (Font textFont = new Font("Consolas", 16))
+            using (Font bodyFont = new Font("Consolas", game.PendingLevel == 5 ? 14 : 16))
             using (Font hintFont = new Font("Consolas", 12))
             using (Brush panel = new SolidBrush(Color.FromArgb(150, 0, 0, 0)))
             using (Pen border = new Pen(Color.FromArgb(220, 215, 170, 85), 2))
@@ -273,32 +273,21 @@ namespace WinFormsApp1
                 g.DrawRectangle(border, box);
                 DrawCenteredString(g, title, titleFont, Brushes.Gold, box.Top + 35);
 
-                int y = box.Top + 115;
-            string? storyImageKey = null;
+                int lineHeight = game.PendingLevel == 5 ? 26 : 32;
+                int y = box.Top + 110;
 
-            if (game.State == GameState.LevelTransition)
-            {
-                if (game.PendingLevel == 3)
-                    storyImageKey = "pilum_spear";
-                else if (game.PendingLevel == 4 || game.PendingLevel == 5)
-                    storyImageKey = "weapon_falx";
-            }
+                string storyText = game.StoryText;
+                if (game.State == GameState.LevelTransition)
+                    storyText = GetWeaponStoryText(game.PendingLevel) + "\n\n" + storyText;
 
-            if (storyImageKey != null && sprites.TryGetValue(storyImageKey, out Image? storyImage))
-            {
-                Rectangle imageRect = new Rectangle(box.Left + box.Width / 2 - 120, box.Top + 80, 240, 120);
-                g.DrawImage(storyImage, imageRect);
-                y = imageRect.Bottom + 20;
-            }
+                string[] lines = WrapText(g, storyText, bodyFont, box.Width - 90);
 
-            string[] lines = WrapText(g, game.StoryText, textFont, box.Width - 90);
-
-            foreach (var line in lines)
-            {
-                SizeF size = g.MeasureString(line, textFont);
-                g.DrawString(line, textFont, Brushes.White, box.Left + (box.Width - size.Width) / 2, y);
-                y += 32;
-            }
+                foreach (var line in lines)
+                {
+                    SizeF size = g.MeasureString(line, bodyFont);
+                    g.DrawString(line, bodyFont, Brushes.White, box.Left + (box.Width - size.Width) / 2, y);
+                    y += lineHeight;
+                }
 
                 string hint = game.State == GameState.Outro ? "ENTER - В МЕНЮ" : "ENTER - ПРОДОЛЖИТЬ";
                 DrawCenteredString(g, hint, hintFont, Brushes.Gray, box.Bottom - 55);
@@ -422,6 +411,20 @@ namespace WinFormsApp1
             return "boss";
         }
 
+        private string GetWeaponStoryText(int level)
+        {
+            if (level == 2)
+                return "Копье: легкое оружие для точных бросков и контроля дистанции. Это копье было выдано тебе тайными союзниками, чтобы пробить строй воинов и сохранить здоровье на арене.";
+            if (level == 3)
+                return "Пилум: тяжелое метательное копье, которое пробивает щиты и оставляет противника уязвимым. Оно отлито из прочного железа и передано тебе ветераном легиона.";
+            if (level == 4)
+                return "Фалкс: оружие ближнего боя с широким лезвием для мощных взмахов. Ты получил его от преторианца, который решил предать строй и помочь тебе прорваться к императору.";
+            if (level == 5)
+                return "Пилум и Фалкс: теперь у тебя есть комбинированный арсенал — дальний Пилум и ближний Фалкс. Эта пара стала твоим шансом пройти через империю к трону.";
+
+            return "";
+        }
+
         private void DrawPause(Graphics g)
         {
             DrawGame(g);
@@ -504,26 +507,41 @@ namespace WinFormsApp1
             {
                 if (!b.IsEnemyBullet)
                 {
+                    RectangleF drawRect = b.Bounds;
+                    if (b.BulletType == 1)
+                    {
+                        drawRect.Inflate(6, 4);
+                    }
+                    else if (b.BulletType == 2)
+                    {
+                        drawRect.Inflate(10, 6);
+                    }
+
                     if (b.BulletType == 1 && sprites.TryGetValue("weapon_spear", out Image? spear))
                     {
-                        g.DrawImage(spear, b.Bounds);
+                        g.DrawImage(spear, drawRect);
                     }
                     else if (b.BulletType == 2 && sprites.TryGetValue("pilum_spear", out Image? pilum))
                     {
-                        g.DrawImage(pilum, b.Bounds);
+                        g.DrawImage(pilum, drawRect);
+                    }
+                    else if (b.BulletType == 1)
+                    {
+                        using (Brush spearBrush = new SolidBrush(Color.LightGray))
+                            g.FillRectangle(spearBrush, drawRect);
                     }
                     else if (sprites.TryGetValue("ball", out Image? ball))
                     {
-                        g.DrawImage(ball, b.Bounds);
+                        g.DrawImage(ball, drawRect);
                     }
                     else
                     {
-                        g.FillEllipse(Brushes.Yellow, b.Bounds);
+                        g.FillEllipse(Brushes.Yellow, drawRect);
                     }
                 }
                 else if (b.BulletType == 3)
                 {
-                    using (Brush dartBrush = new SolidBrush(Color.SaddleBrown))
+                    using (Brush dartBrush = new SolidBrush(Color.OrangeRed))
                     {
                         g.FillRectangle(dartBrush, b.Bounds);
                         float dx = b.dx;
