@@ -11,6 +11,11 @@ namespace WinFormsApp1
         private System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
 
         private bool up, down, left, right;
+        private Dictionary<string, Image> sprites = new Dictionary<string, Image>();
+        private List<Rectangle> levelButtons = new List<Rectangle>();
+        private Rectangle resumeButton;
+        private Rectangle levelSelectButton;
+        private Rectangle exitButton;
 
         // эффект дождя
         private List<string> rain = new List<string>();
@@ -24,6 +29,7 @@ namespace WinFormsApp1
             KeyPreview = true;
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
+            LoadSprites();
 
             timer.Interval = 20;
             timer.Tick += GameLoop;
@@ -31,10 +37,69 @@ namespace WinFormsApp1
 
             this.KeyDown += Form1_KeyDown;
             this.KeyUp += Form1_KeyUp;
+            this.MouseDown += Form1_MouseDown;
 
             // инициализация дождя
             for (int i = 0; i < 30; i++)
                 rain.Add(RandomString(20));
+        }
+
+        private void LoadSprites()
+        {
+            sprites.Clear();
+
+            string assetsPath = Path.Combine(Application.StartupPath, "Assets");
+            if (!Directory.Exists(assetsPath))
+                assetsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Assets");
+
+            Dictionary<string, string[]> aliases = new Dictionary<string, string[]>
+            {
+                { "start_bg", new[] { "start_bg", "arena", "sand" } },
+                { "intro_bg", new[] { "intro_bg", "prison", "General forward beat" } },
+                { "map_bg", new[] { "map_bg", "arena", "sand" } },
+                { "arena_bg", new[] { "arena_bg", "arena", "sand" } },
+                { "outro_bg", new[] { "outro_bg", "victory" } },
+                { "hero", new[] { "hero", "gladiator" } },
+                { "tiger", new[] { "tiger", "tigr" } },
+                { "warrior", new[] { "warrior", "rimskivoin" } },
+                { "chariot", new[] { "chariot", "colesnica" } },
+                { "pretorian", new[] { "pretorian", "pretorianec" } },
+                { "boss", new[] { "boss", "imperator" } },
+                { "lock", new[] { "lock", "shit" } },
+                { "weapon_gladius", new[] { "fireknife", "piece", "weapon_gladius" } },
+                { "weapon_knife", new[] { "knife", "weapon_knife" } },
+                { "weapon_spear", new[] { "copie", "weapon_spear" } },
+                { "weapon_firesword", new[] { "firesword", "fire_sword" } },
+                { "weapon_falx", new[] { "falx", "weapon_falx" } },
+                { "ball", new[] { "ball" } },
+                { "heal_item", new[] { "heal_item", "heal" } },
+                { "pilum_spear", new[] { "pilum_spear", "pilum" } }
+            };
+
+            foreach (var item in aliases)
+            {
+                Image? image = TryLoadAsset(assetsPath, item.Value);
+                if (image != null)
+                    sprites[item.Key] = image;
+            }
+        }
+
+        private Image? TryLoadAsset(string assetsPath, string[] names)
+        {
+            string[] extensions = { ".png", ".jpg", ".jpeg", ".bmp" };
+
+            foreach (string name in names)
+            {
+                foreach (string extension in extensions)
+                {
+                    string path = Path.Combine(assetsPath, name + extension);
+
+                    if (File.Exists(path))
+                        return Image.FromFile(path);
+                }
+            }
+
+            return null;
         }
 
         private void GameLoop(object? sender, EventArgs e)
@@ -53,7 +118,7 @@ namespace WinFormsApp1
         {
             Graphics g = e.Graphics;
 
-            if (game.State == GameState.Menu)
+            if (game.State == GameState.Start || game.State == GameState.Menu)
                 DrawMenu(g);
             else if (game.State == GameState.Intro)
                 DrawStoryScreen(g, "ПРЕДАТЕЛЬСТВО");
@@ -61,6 +126,10 @@ namespace WinFormsApp1
                 DrawGame(g);
             else if (game.State == GameState.Shop)
                 DrawShop(g);
+            else if (game.State == GameState.LevelSelect)
+                DrawLevelSelect(g);
+            else if (game.State == GameState.Pause)
+                DrawPause(g);
             else if (game.State == GameState.LevelTransition)
                 DrawStoryScreen(g, game.LevelTitle);
             else if (game.State == GameState.Outro)
@@ -72,19 +141,19 @@ namespace WinFormsApp1
         // ===================== MENU =====================
         private void DrawMenu(Graphics g)
         {
-            DrawGradient(g);
-            DrawRain(g);
+            DrawBackground(g, "start_bg");
 
             using (Font titleFont = new Font("Consolas", 56, FontStyle.Bold))
             using (Font subtitleFont = new Font("Consolas", 16, FontStyle.Bold))
             using (Font infoFont = new Font("Consolas", 13))
             using (Font smallFont = new Font("Consolas", 11))
+            using (Font controlsFont = new Font("Consolas", 18, FontStyle.Bold))
             using (Pen cyanPen = new Pen(Color.FromArgb(180, 0, 230, 255), 2))
             using (Brush darkPanel = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
             {
                 string title = "ГЛАДИАТОР";
                 SizeF size = g.MeasureString(title, titleFont);
-                float titleX = (ClientSize.Width - size.Width) / 2;
+                float titleX = ClientSize.Width * 0.44f;
                 float titleY = ClientSize.Height * 0.16f;
 
                 for (int i = 5; i >= 1; i--)
@@ -98,31 +167,47 @@ namespace WinFormsApp1
                 string subtitle = "СЮЖЕТНАЯ КАМПАНИЯ";
                 SizeF subtitleSize = g.MeasureString(subtitle, subtitleFont);
                 g.DrawString(subtitle, subtitleFont, Brushes.White,
-                    (ClientSize.Width - subtitleSize.Width) / 2,
+                    titleX + (size.Width - subtitleSize.Width) / 2,
                     titleY + size.Height - 8);
 
-                Rectangle preview = new Rectangle(
-                    ClientSize.Width / 2 - 190,
-                    (int)(ClientSize.Height * 0.42f) - 95,
-                    380,
-                    190);
+                Rectangle portrait = new Rectangle(
+                    70,
+                    80,
+                    (int)(ClientSize.Width * 0.28f),
+                    ClientSize.Height - 160);
 
-                g.FillRectangle(darkPanel, preview);
-                g.DrawRectangle(cyanPen, preview);
-                DrawMenuMapPreview(g, preview);
+                g.FillRectangle(darkPanel, portrait);
+                g.DrawRectangle(cyanPen, portrait);
+
+                if (sprites.TryGetValue("hero", out Image? hero))
+                    g.DrawImage(hero, portrait);
+                else
+                    g.FillEllipse(Brushes.Cyan, portrait);
 
                 string info = "ENTER - НАЧАТЬ";
                 SizeF size2 = g.MeasureString(info, infoFont);
 
                 g.DrawString(info, infoFont, Brushes.White,
-                    (ClientSize.Width - size2.Width) / 2,
-                    preview.Bottom + 30);
+                    titleX + (size.Width - size2.Width) / 2,
+                    titleY + size.Height + 70);
 
                 string controls = "WASD - движение    стрелки - атака    ESC - выход";
-                SizeF controlsSize = g.MeasureString(controls, smallFont);
-                g.DrawString(controls, smallFont, Brushes.Gray,
-                    (ClientSize.Width - controlsSize.Width) / 2,
-                    preview.Bottom + 62);
+                SizeF controlsSize = g.MeasureString(controls, controlsFont);
+                float controlsY = ClientSize.Height - 60;
+                g.DrawString(controls, controlsFont, Brushes.White,
+                    titleX + (size.Width - controlsSize.Width) / 2,
+                    controlsY);
+
+                // Добавим hero.png слева и справа от текста управления
+                if (sprites.TryGetValue("hero", out Image? heroIcon))
+                {
+                    float heroSize = 40;
+                    float heroY = controlsY - 10;
+                    float leftHeroX = titleX + (size.Width - controlsSize.Width) / 2 - heroSize - 10;
+                    float rightHeroX = titleX + (size.Width + controlsSize.Width) / 2 + 10;
+                    g.DrawImage(heroIcon, leftHeroX, heroY, heroSize, heroSize);
+                    g.DrawImage(heroIcon, rightHeroX, heroY, heroSize, heroSize);
+                }
             }
         }
 
@@ -169,8 +254,8 @@ namespace WinFormsApp1
 
         private void DrawStoryScreen(Graphics g, string title)
         {
-            DrawGradient(g);
-            DrawRain(g);
+            string backgroundKey = game.State == GameState.Outro ? "outro_bg" : "intro_bg";
+            DrawBackground(g, backgroundKey);
 
             using (Font titleFont = new Font("Consolas", 34, FontStyle.Bold))
             using (Font textFont = new Font("Consolas", 16))
@@ -188,15 +273,32 @@ namespace WinFormsApp1
                 g.DrawRectangle(border, box);
                 DrawCenteredString(g, title, titleFont, Brushes.Gold, box.Top + 35);
 
-                string[] lines = WrapText(g, game.StoryText, textFont, box.Width - 90);
                 int y = box.Top + 115;
+            string? storyImageKey = null;
 
-                foreach (var line in lines)
-                {
-                    SizeF size = g.MeasureString(line, textFont);
-                    g.DrawString(line, textFont, Brushes.White, box.Left + (box.Width - size.Width) / 2, y);
-                    y += 32;
-                }
+            if (game.State == GameState.LevelTransition)
+            {
+                if (game.PendingLevel == 3)
+                    storyImageKey = "pilum_spear";
+                else if (game.PendingLevel == 4 || game.PendingLevel == 5)
+                    storyImageKey = "weapon_falx";
+            }
+
+            if (storyImageKey != null && sprites.TryGetValue(storyImageKey, out Image? storyImage))
+            {
+                Rectangle imageRect = new Rectangle(box.Left + box.Width / 2 - 120, box.Top + 80, 240, 120);
+                g.DrawImage(storyImage, imageRect);
+                y = imageRect.Bottom + 20;
+            }
+
+            string[] lines = WrapText(g, game.StoryText, textFont, box.Width - 90);
+
+            foreach (var line in lines)
+            {
+                SizeF size = g.MeasureString(line, textFont);
+                g.DrawString(line, textFont, Brushes.White, box.Left + (box.Width - size.Width) / 2, y);
+                y += 32;
+            }
 
                 string hint = game.State == GameState.Outro ? "ENTER - В МЕНЮ" : "ENTER - ПРОДОЛЖИТЬ";
                 DrawCenteredString(g, hint, hintFont, Brushes.Gray, box.Bottom - 55);
@@ -206,35 +308,172 @@ namespace WinFormsApp1
         private string[] WrapText(Graphics g, string text, Font font, int maxWidth)
         {
             List<string> lines = new List<string>();
-            string current = "";
+            string[] paragraphs = text.Split(new[] { '\n' }, StringSplitOptions.None);
 
-            foreach (string word in text.Split(' '))
+            for (int p = 0; p < paragraphs.Length; p++)
             {
-                string next = current.Length == 0 ? word : current + " " + word;
+                string paragraph = paragraphs[p];
+                string current = "";
 
-                if (g.MeasureString(next, font).Width > maxWidth && current.Length > 0)
+                foreach (string word in paragraph.Split(' '))
                 {
+                    string next = current.Length == 0 ? word : current + " " + word;
+
+                    if (g.MeasureString(next, font).Width > maxWidth && current.Length > 0)
+                    {
+                        lines.Add(current);
+                        current = word;
+                    }
+                    else
+                    {
+                        current = next;
+                    }
+                }
+
+                if (current.Length > 0)
                     lines.Add(current);
-                    current = word;
-                }
-                else
-                {
-                    current = next;
-                }
+
+                if (p < paragraphs.Length - 1)
+                    lines.Add("");
             }
 
-            if (current.Length > 0)
-                lines.Add(current);
-
             return lines.ToArray();
+        }
+
+        private void DrawBackground(Graphics g, string key)
+        {
+            if (sprites.TryGetValue(key, out Image? image))
+            {
+                g.DrawImage(image, 0, 0, ClientSize.Width, ClientSize.Height);
+                using (Brush shade = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
+                    g.FillRectangle(shade, ClientRectangle);
+            }
+            else
+            {
+                DrawGradient(g);
+                DrawRain(g);
+            }
+        }
+
+        private void DrawLevelSelect(Graphics g)
+        {
+            DrawBackground(g, "map_bg");
+            levelButtons.Clear();
+
+            using (Font titleFont = new Font("Consolas", 34, FontStyle.Bold))
+            using (Font labelFont = new Font("Consolas", 14, FontStyle.Bold))
+            using (Brush lockedBrush = new SolidBrush(Color.FromArgb(170, 0, 0, 0)))
+            using (Pen activePen = new Pen(Color.Gold, 3))
+            using (Pen lockedPen = new Pen(Color.Gray, 2))
+            {
+                DrawCenteredString(g, "ВЫБОР УРОВНЯ", titleFont, Brushes.Gold, 90);
+
+                int size = 150;
+                int gap = 28;
+                int totalWidth = size * 5 + gap * 4;
+                int startX = (ClientSize.Width - totalWidth) / 2;
+                int y = ClientSize.Height / 2 - size / 2;
+
+                for (int i = 0; i < 5; i++)
+                {
+                    Rectangle rect = new Rectangle(startX + i * (size + gap), y, size, size);
+                    levelButtons.Add(rect);
+                    bool unlocked = i + 1 <= game.MaxUnlockedLevel;
+
+                    string iconKey = GetLevelIconKey(i + 1);
+                    if (sprites.TryGetValue(iconKey, out Image? icon))
+                        g.DrawImage(icon, rect);
+                    else
+                        g.FillRectangle(Brushes.SaddleBrown, rect);
+
+                    if (!unlocked)
+                    {
+                        g.FillRectangle(lockedBrush, rect);
+
+                        if (sprites.TryGetValue("lock", out Image? lockImage))
+                        {
+                            Rectangle lockRect = Rectangle.Inflate(rect, -42, -42);
+                            g.DrawImage(lockImage, lockRect);
+                        }
+                    }
+
+                    g.DrawRectangle(unlocked ? activePen : lockedPen, rect);
+
+                    string text = unlocked ? $"УРОВЕНЬ {i + 1}" : "ЗАКРЫТО";
+                    SizeF textSize = g.MeasureString(text, labelFont);
+                    g.DrawString(text, labelFont, unlocked ? Brushes.White : Brushes.Gray,
+                        rect.Left + (rect.Width - textSize.Width) / 2,
+                        rect.Bottom + 14);
+                }
+            }
+        }
+
+        private string GetLevelIconKey(int level)
+        {
+            if (level == 1)
+                return "tiger";
+            if (level == 2)
+                return "warrior";
+            if (level == 3)
+                return "chariot";
+            if (level == 4)
+                return "pretorian";
+
+            return "boss";
+        }
+
+        private void DrawPause(Graphics g)
+        {
+            DrawGame(g);
+
+            using (Brush overlay = new SolidBrush(Color.FromArgb(185, 0, 0, 0)))
+            using (Brush buttonBrush = new SolidBrush(Color.FromArgb(230, 42, 34, 28)))
+            using (Pen border = new Pen(Color.Gold, 2))
+            using (Font titleFont = new Font("Consolas", 30, FontStyle.Bold))
+            using (Font buttonFont = new Font("Consolas", 16, FontStyle.Bold))
+            {
+                g.FillRectangle(overlay, ClientRectangle);
+                DrawCenteredString(g, "ПАУЗА", titleFont, Brushes.Gold, ClientSize.Height / 2 - 160);
+
+                int w = 310;
+                int h = 52;
+                int x = ClientSize.Width / 2 - w / 2;
+                int y = ClientSize.Height / 2 - 70;
+
+                resumeButton = new Rectangle(x, y, w, h);
+                levelSelectButton = new Rectangle(x, y + 72, w, h);
+                exitButton = new Rectangle(x, y + 144, w, h);
+
+                DrawMenuButton(g, resumeButton, "Продолжить", buttonBrush, border, buttonFont);
+                DrawMenuButton(g, levelSelectButton, "В меню уровней", buttonBrush, border, buttonFont);
+                DrawMenuButton(g, exitButton, "Выход из игры", buttonBrush, border, buttonFont);
+            }
+        }
+
+        private void DrawMenuButton(Graphics g, Rectangle rect, string text, Brush brush, Pen pen, Font font)
+        {
+            g.FillRectangle(brush, rect);
+            g.DrawRectangle(pen, rect);
+
+            SizeF size = g.MeasureString(text, font);
+            g.DrawString(text, font, Brushes.White,
+                rect.Left + (rect.Width - size.Width) / 2,
+                rect.Top + (rect.Height - size.Height) / 2);
         }
 
         // ===================== GAME =====================
         private void DrawGame(Graphics g)
         {
-            g.Clear(Color.FromArgb(10, 10, 20));
-
-            DrawMap(g);
+            if (sprites.TryGetValue("arena_bg", out Image? arena))
+            {
+                g.DrawImage(arena, 0, 0, ClientSize.Width, ClientSize.Height);
+                DrawGates(g);
+            }
+            else
+            {
+                g.Clear(Color.FromArgb(10, 10, 20));
+                DrawMap(g);
+            }
 
             // стены
             foreach (var wall in game.walls)
@@ -262,7 +501,52 @@ namespace WinFormsApp1
 
             // пули
             foreach (var b in game.bullets)
-                g.FillRectangle(b.IsEnemyBullet ? Brushes.Magenta : Brushes.Yellow, b.Bounds);
+            {
+                if (!b.IsEnemyBullet)
+                {
+                    if (b.BulletType == 1 && sprites.TryGetValue("weapon_spear", out Image? spear))
+                    {
+                        g.DrawImage(spear, b.Bounds);
+                    }
+                    else if (b.BulletType == 2 && sprites.TryGetValue("pilum_spear", out Image? pilum))
+                    {
+                        g.DrawImage(pilum, b.Bounds);
+                    }
+                    else if (sprites.TryGetValue("ball", out Image? ball))
+                    {
+                        g.DrawImage(ball, b.Bounds);
+                    }
+                    else
+                    {
+                        g.FillEllipse(Brushes.Yellow, b.Bounds);
+                    }
+                }
+                else if (b.BulletType == 3)
+                {
+                    using (Brush dartBrush = new SolidBrush(Color.SaddleBrown))
+                    {
+                        g.FillRectangle(dartBrush, b.Bounds);
+                        float dx = b.dx;
+                        float dy = b.dy;
+                        float length = (float)Math.Sqrt(dx * dx + dy * dy);
+
+                        if (length > 0.1f)
+                        {
+                            PointF dir = new PointF(dx / length, dy / length);
+                            PointF perp = new PointF(-dir.Y, dir.X);
+                            PointF tip = new PointF(b.Bounds.Left + b.Bounds.Width / 2 + dir.X * b.Bounds.Width, b.Bounds.Top + b.Bounds.Height / 2 + dir.Y * b.Bounds.Width);
+                            PointF p1 = tip;
+                            PointF p2 = new PointF(b.Bounds.Left + b.Bounds.Width / 2 + perp.X * 4, b.Bounds.Top + b.Bounds.Height / 2 + perp.Y * 4);
+                            PointF p3 = new PointF(b.Bounds.Left + b.Bounds.Width / 2 - perp.X * 4, b.Bounds.Top + b.Bounds.Height / 2 - perp.Y * 4);
+                            g.FillPolygon(dartBrush, new[] { p1, p2, p3 });
+                        }
+                    }
+                }
+                else
+                {
+                    g.FillRectangle(Brushes.Magenta, b.Bounds);
+                }
+            }
 
             // частицы
             foreach (var p in game.particles)
@@ -270,7 +554,18 @@ namespace WinFormsApp1
 
             // аптечки
             foreach (var p in game.powerUps)
-                g.FillEllipse(Brushes.Lime, p.Bounds);
+            {
+                if (sprites.TryGetValue("heal_item", out Image? heal))
+                {
+                    // Увеличиваем размер heal_item в 2 раза
+                    RectangleF healRect = new RectangleF(p.Bounds.X - p.Bounds.Width / 2, p.Bounds.Y - p.Bounds.Height / 2, p.Bounds.Width * 2, p.Bounds.Height * 2);
+                    g.DrawImage(heal, (int)healRect.X, (int)healRect.Y, (int)healRect.Width, (int)healRect.Height);
+                }
+                else
+                {
+                    g.FillEllipse(Brushes.Lime, p.Bounds);
+                }
+            }
 
             DrawHUD(g);
         }
@@ -278,6 +573,12 @@ namespace WinFormsApp1
         private void DrawGladiator(Graphics g)
         {
             RectangleF b = game.player.Bounds;
+
+            if (sprites.TryGetValue("hero", out Image? playerImage))
+            {
+                g.DrawImage(playerImage, b);
+                return;
+            }
 
             using (Brush skin = new SolidBrush(Color.FromArgb(210, 160, 105)))
             using (Brush armor = new SolidBrush(Color.FromArgb(170, 45, 35)))
@@ -293,6 +594,13 @@ namespace WinFormsApp1
 
         private void DrawEnemy(Graphics g, Enemy enemy)
         {
+            string key = GetEnemyImageKey(enemy.Type);
+            if (sprites.TryGetValue(key, out Image? image))
+            {
+                g.DrawImage(image, enemy.Bounds);
+                return;
+            }
+
             if (enemy.Type == EnemyType.Tiger)
             {
                 using (Brush body = new SolidBrush(Color.Orange))
@@ -343,6 +651,26 @@ namespace WinFormsApp1
                     g.DrawLine(Pens.Silver, enemy.Bounds.Left, enemy.Bounds.Top, enemy.Bounds.Right, enemy.Bounds.Bottom);
                 }
             }
+        }
+
+        private string GetEnemyImageKey(EnemyType type)
+        {
+            if (type == EnemyType.Tiger)
+                return "tiger";
+
+            if (type == EnemyType.Warrior)
+                return "warrior";
+
+            if (type == EnemyType.Praetorian)
+                return "pretorian";
+
+            if (type == EnemyType.Chariot)
+                return "chariot";
+
+            if (type == EnemyType.Emperor)
+                return "boss";
+
+            return "warrior";
         }
 
         // ===================== SHOP =====================
@@ -499,10 +827,13 @@ namespace WinFormsApp1
         // ===================== HUD =====================
         private void DrawHUD(Graphics g)
         {
-            g.DrawString($"Очки: {game.Score}", Font, Brushes.White, 10, 10);
-            g.DrawString($"Глава: {game.CampaignLevel}/5", Font, Brushes.White, 10, 30);
-            g.DrawString($"Врагов осталось: {game.EnemiesRemaining}", Font, Brushes.White, 10, 50);
-            g.DrawString($"Оружие: {GetWeaponName()}", Font, Brushes.White, 10, 95);
+            using (Font hudFont = new Font("Consolas", 12, FontStyle.Bold))
+            {
+                g.DrawString($"Очки: {game.Score}", hudFont, Brushes.White, 10, 10);
+                g.DrawString($"Глава: {game.CampaignLevel}/5", hudFont, Brushes.White, 10, 30);
+                g.DrawString($"Врагов осталось: {game.EnemiesRemaining}", hudFont, Brushes.White, 10, 50);
+                g.DrawString($"Оружие: {GetWeaponName()}", hudFont, Brushes.White, 10, 95);
+            }
 
             int maxHP = 100;
             int barWidth = 200;
@@ -510,6 +841,58 @@ namespace WinFormsApp1
 
             g.DrawRectangle(Pens.White, 10, 75, barWidth, 12);
             g.FillRectangle(Brushes.Red, 10, 75, hpWidth, 12);
+
+            DrawWeaponIcon(g);
+
+            // Здоровье Босса на Level 5
+            if (game.CampaignLevel == 5 && game.BossHP > 0)
+            {
+                int bossBarWidth = 400;
+                int bossHpWidth = Math.Max(0, game.BossHP) * bossBarWidth / game.BossMaxHP;
+                int bossBarX = (ClientSize.Width - bossBarWidth) / 2;
+                int bossBarY = 20;
+
+                g.DrawRectangle(Pens.White, bossBarX, bossBarY, bossBarWidth, 20);
+                g.FillRectangle(Brushes.Red, bossBarX, bossBarY, bossHpWidth, 20);
+
+                using (Font bossFont = new Font("Consolas", 10, FontStyle.Bold))
+                {
+                    string bossText = $"Босс: {game.BossHP}/{game.BossMaxHP}";
+                    SizeF bossSize = g.MeasureString(bossText, bossFont);
+                    g.DrawString(bossText, bossFont, Brushes.White, bossBarX + (bossBarWidth - bossSize.Width) / 2, bossBarY + 22);
+                }
+            }
+        }
+
+        private void DrawWeaponIcon(Graphics g)
+        {
+            string key = "weapon_gladius";
+
+            if (game.CurrentWeapon == WeaponType.Knife)
+                key = "weapon_knife";
+            else if (game.CurrentWeapon == WeaponType.Spear)
+                key = "weapon_spear";
+            else if (game.CurrentWeapon == WeaponType.Pilum)
+                key = "pilum_spear";
+            else if (game.CurrentWeapon == WeaponType.FireSword)
+                key = "weapon_firesword";
+            else if (game.CurrentWeapon == WeaponType.Falx)
+                key = "weapon_falx";
+
+            Rectangle rect = new Rectangle(ClientSize.Width - 92, ClientSize.Height - 92, 72, 72);
+
+            using (Brush bg = new SolidBrush(Color.FromArgb(170, 0, 0, 0)))
+            using (Pen border = new Pen(Color.Gold, 2))
+            using (Font font = new Font("Consolas", 8, FontStyle.Bold))
+            {
+                g.FillRectangle(bg, rect);
+                g.DrawRectangle(border, rect);
+
+                if (sprites.TryGetValue(key, out Image? icon))
+                    g.DrawImage(icon, Rectangle.Inflate(rect, -6, -6));
+                else
+                    g.DrawString(GetWeaponName(), font, Brushes.White, rect.Left + 6, rect.Top + 28);
+            }
         }
 
         private string GetWeaponName()
@@ -520,7 +903,16 @@ namespace WinFormsApp1
             if (game.CurrentWeapon == WeaponType.Spear)
                 return "Копье";
 
-            return "Гладиус";
+            if (game.CurrentWeapon == WeaponType.Pilum)
+                return "Пилум";
+
+            if (game.CurrentWeapon == WeaponType.FireSword)
+                return "Огненный меч";
+
+            if (game.CurrentWeapon == WeaponType.Falx)
+                return "Фалкс";
+
+            return "Меч";
         }
 
         // ===================== INPUT =====================
@@ -528,17 +920,31 @@ namespace WinFormsApp1
         {
             if (e.KeyCode == Keys.Escape)
             {
-                timer.Stop();
-                Close();
+                if (game.State == GameState.Playing)
+                {
+                    game.PauseGame();
+                    timer.Stop();
+                    Invalidate();
+                }
+                else if (game.State == GameState.Pause)
+                {
+                    game.ResumeGame();
+                    timer.Start();
+                    Invalidate();
+                }
                 return;
             }
 
             // запуск / рестарт
             if (e.KeyCode == Keys.Enter)
             {
-                if (game.State == GameState.Menu || game.State == GameState.GameOver)
+                if (game.State == GameState.Start || game.State == GameState.Menu)
                 {
                     game.StartGame(ClientSize.Width, ClientSize.Height);
+                }
+                else if (game.State == GameState.GameOver)
+                {
+                    game.ReturnToLevelSelect();
                 }
                 else if (game.State == GameState.Intro || game.State == GameState.LevelTransition || game.State == GameState.Outro)
                 {
@@ -562,6 +968,18 @@ namespace WinFormsApp1
 
             if (game.State != GameState.Playing) return;
 
+            if (game.CampaignLevel == 5)
+            {
+                if (e.KeyCode == Keys.Q)
+                    game.ToggleWeapon();
+
+                if (e.KeyCode == Keys.D1 || e.KeyCode == Keys.NumPad1)
+                    game.CurrentWeapon = WeaponType.Pilum;
+
+                if (e.KeyCode == Keys.D2 || e.KeyCode == Keys.NumPad2)
+                    game.CurrentWeapon = WeaponType.Falx;
+            }
+
             if (e.KeyCode == Keys.W) up = true;
             if (e.KeyCode == Keys.S) down = true;
             if (e.KeyCode == Keys.A) left = true;
@@ -572,6 +990,43 @@ namespace WinFormsApp1
             if (e.KeyCode == Keys.Left) game.Shoot(-1, 0);
             if (e.KeyCode == Keys.Right) game.Shoot(1, 0);
             if (e.KeyCode == Keys.Space) game.TryDash();
+        }
+
+        private void Form1_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (game.State == GameState.LevelSelect)
+            {
+                for (int i = 0; i < levelButtons.Count; i++)
+                {
+                    if (levelButtons[i].Contains(e.Location) && i + 1 <= game.MaxUnlockedLevel)
+                    {
+                        game.SelectLevel(i + 1, ClientSize.Width, ClientSize.Height);
+                        timer.Start();
+                        Invalidate();
+                        return;
+                    }
+                }
+            }
+
+            if (game.State != GameState.Pause)
+                return;
+
+            if (resumeButton.Contains(e.Location))
+            {
+                game.ResumeGame();
+                timer.Start();
+                Invalidate();
+            }
+            else if (levelSelectButton.Contains(e.Location))
+            {
+                game.ReturnToLevelSelect();
+                timer.Start();
+                Invalidate();
+            }
+            else if (exitButton.Contains(e.Location))
+            {
+                Close();
+            }
         }
 
         private void Form1_KeyUp(object? sender, KeyEventArgs e)
