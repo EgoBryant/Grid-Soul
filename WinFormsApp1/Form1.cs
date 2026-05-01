@@ -55,10 +55,16 @@ namespace WinFormsApp1
 
             if (game.State == GameState.Menu)
                 DrawMenu(g);
+            else if (game.State == GameState.Intro)
+                DrawStoryScreen(g, "ПРЕДАТЕЛЬСТВО");
             else if (game.State == GameState.Playing)
                 DrawGame(g);
             else if (game.State == GameState.Shop)
                 DrawShop(g);
+            else if (game.State == GameState.LevelTransition)
+                DrawStoryScreen(g, game.LevelTitle);
+            else if (game.State == GameState.Outro)
+                DrawStoryScreen(g, "СВОБОДА РИМА");
             else if (game.State == GameState.GameOver)
                 DrawGameOver(g);
         }
@@ -76,7 +82,7 @@ namespace WinFormsApp1
             using (Pen cyanPen = new Pen(Color.FromArgb(180, 0, 230, 255), 2))
             using (Brush darkPanel = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
             {
-                string title = "GRID SOUL";
+                string title = "ГЛАДИАТОР";
                 SizeF size = g.MeasureString(title, titleFont);
                 float titleX = (ClientSize.Width - size.Width) / 2;
                 float titleY = ClientSize.Height * 0.16f;
@@ -89,7 +95,7 @@ namespace WinFormsApp1
 
                 g.DrawString(title, titleFont, Brushes.Cyan, titleX, titleY);
 
-                string subtitle = "ЛАБИРИНТ ВЫЖИВАНИЯ";
+                string subtitle = "СЮЖЕТНАЯ КАМПАНИЯ";
                 SizeF subtitleSize = g.MeasureString(subtitle, subtitleFont);
                 g.DrawString(subtitle, subtitleFont, Brushes.White,
                     (ClientSize.Width - subtitleSize.Width) / 2,
@@ -112,7 +118,7 @@ namespace WinFormsApp1
                     (ClientSize.Width - size2.Width) / 2,
                     preview.Bottom + 30);
 
-                string controls = "WASD - движение    стрелки - стрельба    P - магазин";
+                string controls = "WASD - движение    стрелки - атака    ESC - выход";
                 SizeF controlsSize = g.MeasureString(controls, smallFont);
                 g.DrawString(controls, smallFont, Brushes.Gray,
                     (ClientSize.Width - controlsSize.Width) / 2,
@@ -161,6 +167,68 @@ namespace WinFormsApp1
             g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
         }
 
+        private void DrawStoryScreen(Graphics g, string title)
+        {
+            DrawGradient(g);
+            DrawRain(g);
+
+            using (Font titleFont = new Font("Consolas", 34, FontStyle.Bold))
+            using (Font textFont = new Font("Consolas", 16))
+            using (Font hintFont = new Font("Consolas", 12))
+            using (Brush panel = new SolidBrush(Color.FromArgb(150, 0, 0, 0)))
+            using (Pen border = new Pen(Color.FromArgb(220, 215, 170, 85), 2))
+            {
+                Rectangle box = new Rectangle(
+                    ClientSize.Width / 2 - 430,
+                    ClientSize.Height / 2 - 190,
+                    860,
+                    380);
+
+                g.FillRectangle(panel, box);
+                g.DrawRectangle(border, box);
+                DrawCenteredString(g, title, titleFont, Brushes.Gold, box.Top + 35);
+
+                string[] lines = WrapText(g, game.StoryText, textFont, box.Width - 90);
+                int y = box.Top + 115;
+
+                foreach (var line in lines)
+                {
+                    SizeF size = g.MeasureString(line, textFont);
+                    g.DrawString(line, textFont, Brushes.White, box.Left + (box.Width - size.Width) / 2, y);
+                    y += 32;
+                }
+
+                string hint = game.State == GameState.Outro ? "ENTER - В МЕНЮ" : "ENTER - ПРОДОЛЖИТЬ";
+                DrawCenteredString(g, hint, hintFont, Brushes.Gray, box.Bottom - 55);
+            }
+        }
+
+        private string[] WrapText(Graphics g, string text, Font font, int maxWidth)
+        {
+            List<string> lines = new List<string>();
+            string current = "";
+
+            foreach (string word in text.Split(' '))
+            {
+                string next = current.Length == 0 ? word : current + " " + word;
+
+                if (g.MeasureString(next, font).Width > maxWidth && current.Length > 0)
+                {
+                    lines.Add(current);
+                    current = word;
+                }
+                else
+                {
+                    current = next;
+                }
+            }
+
+            if (current.Length > 0)
+                lines.Add(current);
+
+            return lines.ToArray();
+        }
+
         // ===================== GAME =====================
         private void DrawGame(Graphics g)
         {
@@ -178,17 +246,18 @@ namespace WinFormsApp1
             }
 
             // игрок
-            g.FillEllipse(Brushes.Blue, game.player.Bounds);
+            DrawGladiator(g);
 
             // враги
             foreach (var enemy in game.enemies)
             {
-                g.FillRectangle(enemy.IsBoss ? Brushes.Purple : Brushes.Red, enemy.Bounds);
-                g.DrawRectangle(Pens.White,
-                    enemy.Bounds.X,
-                    enemy.Bounds.Y,
-                    enemy.Bounds.Width,
-                    enemy.Bounds.Height);
+                DrawEnemy(g, enemy);
+            }
+
+            foreach (var slash in game.slashes)
+            {
+                using (Brush slashBrush = new SolidBrush(Color.FromArgb(150, 255, 245, 170)))
+                    g.FillEllipse(slashBrush, slash.Bounds);
             }
 
             // пули
@@ -204,6 +273,76 @@ namespace WinFormsApp1
                 g.FillEllipse(Brushes.Lime, p.Bounds);
 
             DrawHUD(g);
+        }
+
+        private void DrawGladiator(Graphics g)
+        {
+            RectangleF b = game.player.Bounds;
+
+            using (Brush skin = new SolidBrush(Color.FromArgb(210, 160, 105)))
+            using (Brush armor = new SolidBrush(Color.FromArgb(170, 45, 35)))
+            using (Pen helmet = new Pen(Color.Gold, 2))
+            using (Pen blade = new Pen(Color.Silver, 3))
+            {
+                g.FillEllipse(skin, b);
+                g.FillRectangle(armor, b.X + b.Width * 0.2f, b.Y + b.Height * 0.45f, b.Width * 0.6f, b.Height * 0.45f);
+                g.DrawArc(helmet, b.X - 2, b.Y - 4, b.Width + 4, b.Height, 195, 150);
+                g.DrawLine(blade, b.Right - 2, b.Y + b.Height / 2, b.Right + 14, b.Y + b.Height / 2 - 8);
+            }
+        }
+
+        private void DrawEnemy(Graphics g, Enemy enemy)
+        {
+            if (enemy.Type == EnemyType.Tiger)
+            {
+                using (Brush body = new SolidBrush(Color.Orange))
+                using (Pen stripes = new Pen(Color.Black, 2))
+                {
+                    g.FillEllipse(body, enemy.Bounds);
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float x = enemy.Bounds.Left + 5 + i * 6;
+                        g.DrawLine(stripes, x, enemy.Bounds.Top + 4, x + 5, enemy.Bounds.Bottom - 4);
+                    }
+                }
+            }
+            else if (enemy.Type == EnemyType.Chariot)
+            {
+                using (Brush cart = new SolidBrush(Color.SaddleBrown))
+                using (Pen wheel = new Pen(Color.Gold, 2))
+                {
+                    g.FillRectangle(cart, enemy.Bounds);
+                    g.DrawEllipse(wheel, enemy.Bounds.Left + 3, enemy.Bounds.Bottom - 10, 10, 10);
+                    g.DrawEllipse(wheel, enemy.Bounds.Right - 13, enemy.Bounds.Bottom - 10, 10, 10);
+                }
+            }
+            else if (enemy.Type == EnemyType.Praetorian)
+            {
+                using (Brush armor = new SolidBrush(Color.DarkSlateGray))
+                using (Pen gold = new Pen(Color.Gold, 2))
+                {
+                    g.FillRectangle(armor, enemy.Bounds);
+                    g.DrawRectangle(gold, enemy.Bounds.X, enemy.Bounds.Y, enemy.Bounds.Width, enemy.Bounds.Height);
+                }
+            }
+            else if (enemy.Type == EnemyType.Emperor)
+            {
+                using (Brush robe = new SolidBrush(Color.Purple))
+                using (Pen crown = new Pen(Color.Gold, 3))
+                {
+                    g.FillEllipse(robe, enemy.Bounds);
+                    g.DrawLine(crown, enemy.Bounds.Left + 8, enemy.Bounds.Top, enemy.Bounds.Right - 8, enemy.Bounds.Top);
+                    g.DrawRectangle(Pens.White, enemy.Bounds.X, enemy.Bounds.Y, enemy.Bounds.Width, enemy.Bounds.Height);
+                }
+            }
+            else
+            {
+                using (Brush tunic = new SolidBrush(Color.Firebrick))
+                {
+                    g.FillRectangle(tunic, enemy.Bounds);
+                    g.DrawLine(Pens.Silver, enemy.Bounds.Left, enemy.Bounds.Top, enemy.Bounds.Right, enemy.Bounds.Bottom);
+                }
+            }
         }
 
         // ===================== SHOP =====================
@@ -303,6 +442,33 @@ namespace WinFormsApp1
 
                     g.DrawRectangle(border, area.X, area.Y, area.Width - 1, area.Height - 1);
                 }
+
+                DrawGates(g);
+            }
+        }
+
+        private void DrawGates(Graphics g)
+        {
+            using (Brush gate = new SolidBrush(Color.FromArgb(60, 25, 15)))
+            using (Pen gold = new Pen(Color.Gold, 3))
+            {
+                int w = ClientSize.Width;
+                int h = ClientSize.Height;
+
+                Rectangle top = new Rectangle(w / 2 - 45, 0, 90, 18);
+                Rectangle bottom = new Rectangle(w / 2 - 45, h - 18, 90, 18);
+                Rectangle left = new Rectangle(0, h / 2 - 45, 18, 90);
+                Rectangle right = new Rectangle(w - 18, h / 2 - 45, 18, 90);
+
+                g.FillRectangle(gate, top);
+                g.FillRectangle(gate, bottom);
+                g.FillRectangle(gate, left);
+                g.FillRectangle(gate, right);
+
+                g.DrawRectangle(gold, top);
+                g.DrawRectangle(gold, bottom);
+                g.DrawRectangle(gold, left);
+                g.DrawRectangle(gold, right);
             }
         }
 
@@ -334,9 +500,9 @@ namespace WinFormsApp1
         private void DrawHUD(Graphics g)
         {
             g.DrawString($"Очки: {game.Score}", Font, Brushes.White, 10, 10);
-            g.DrawString($"Всего: {game.TotalScore}", Font, Brushes.White, 10, 30);
-            g.DrawString($"Уровень: {game.Level}", Font, Brushes.White, 10, 50);
-            g.DrawString($"Рывок: {(game.DashReady ? "готов" : "зарядка")}", Font, Brushes.White, 10, 95);
+            g.DrawString($"Глава: {game.CampaignLevel}/5", Font, Brushes.White, 10, 30);
+            g.DrawString($"Врагов осталось: {game.EnemiesRemaining}", Font, Brushes.White, 10, 50);
+            g.DrawString($"Оружие: {GetWeaponName()}", Font, Brushes.White, 10, 95);
 
             int maxHP = 100;
             int barWidth = 200;
@@ -344,6 +510,17 @@ namespace WinFormsApp1
 
             g.DrawRectangle(Pens.White, 10, 75, barWidth, 12);
             g.FillRectangle(Brushes.Red, 10, 75, hpWidth, 12);
+        }
+
+        private string GetWeaponName()
+        {
+            if (game.CurrentWeapon == WeaponType.Knife)
+                return "Нож";
+
+            if (game.CurrentWeapon == WeaponType.Spear)
+                return "Копье";
+
+            return "Гладиус";
         }
 
         // ===================== INPUT =====================
@@ -363,11 +540,14 @@ namespace WinFormsApp1
                 {
                     game.StartGame(ClientSize.Width, ClientSize.Height);
                 }
+                else if (game.State == GameState.Intro || game.State == GameState.LevelTransition || game.State == GameState.Outro)
+                {
+                    game.ContinueStory(ClientSize.Width, ClientSize.Height);
+                }
             }
 
             if (e.KeyCode == Keys.P)
             {
-                game.ToggleShop();
                 return;
             }
 

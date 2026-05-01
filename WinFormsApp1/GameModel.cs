@@ -7,9 +7,28 @@ namespace WinFormsApp1
     public enum GameState
     {
         Menu,
+        Intro,
         Playing,
         Shop,
+        LevelTransition,
+        Outro,
         GameOver
+    }
+
+    public enum EnemyType
+    {
+        Tiger,
+        Warrior,
+        Chariot,
+        Praetorian,
+        Emperor
+    }
+
+    public enum WeaponType
+    {
+        Gladius,
+        Knife,
+        Spear
     }
 
     public class Player
@@ -27,6 +46,8 @@ namespace WinFormsApp1
         public PointF Velocity;
         public bool IsBoss;
         public int ShootTimer;
+        public EnemyType Type;
+        public int Armor;
     }
 
     public class Bullet
@@ -34,6 +55,14 @@ namespace WinFormsApp1
         public RectangleF Bounds;
         public float dx, dy;
         public bool IsEnemyBullet;
+        public int Damage = 1;
+        public float SplashRadius = 0;
+    }
+
+    public class Slash
+    {
+        public RectangleF Bounds;
+        public int Life;
     }
 
     public class Particle
@@ -69,6 +98,7 @@ namespace WinFormsApp1
         public List<Enemy> enemies = new List<Enemy>();
         public List<Bullet> bullets = new List<Bullet>();
         public List<Particle> particles = new List<Particle>();
+        public List<Slash> slashes = new List<Slash>();
         public List<Wall> walls = new List<Wall>();
         public List<RectangleF> mapAreas = new List<RectangleF>();
         public List<PowerUp> powerUps = new List<PowerUp>();
@@ -76,6 +106,12 @@ namespace WinFormsApp1
         public int Score = 0;
         public int TotalScore = 0;
         public int Level = 1;
+        public int CampaignLevel = 1;
+        public int EnemiesRemaining = 0;
+        public int EnemiesTotal = 0;
+        public string StoryText = "";
+        public string LevelTitle = "";
+        public WeaponType CurrentWeapon = WeaponType.Gladius;
 
         private Random rand = new Random();
         private int spawnTimer = 0;
@@ -89,6 +125,10 @@ namespace WinFormsApp1
         private bool hasDash = false;
         private int dashTimer = 0;
         private int dashCooldown = 0;
+        private int enemiesSpawned = 0;
+        private int spawnTarget = 0;
+        private int levelSpawnTimer = 0;
+        private EnemyType currentEnemyType = EnemyType.Tiger;
 
         private const float BasePlayerSpeed = 4f;
         private const int DashDuration = 8;
@@ -111,12 +151,13 @@ namespace WinFormsApp1
         // ================= START =================
         public void StartGame(int width, int height)
         {
-            State = GameState.Playing;
+            State = GameState.Intro;
 
             player = new Player();
             enemies.Clear();
             bullets.Clear();
             particles.Clear();
+            slashes.Clear();
             walls.Clear();
             mapAreas.Clear();
             powerUps.Clear();
@@ -133,12 +174,39 @@ namespace WinFormsApp1
             hasDash = false;
             dashTimer = 0;
             dashCooldown = 0;
+            CampaignLevel = 1;
+            CurrentWeapon = WeaponType.Gladius;
+            EnemiesRemaining = 0;
+            EnemiesTotal = 0;
+            enemiesSpawned = 0;
+            spawnTarget = 0;
+            levelSpawnTimer = 0;
+            StoryText = "Рим предал своего лучшего полководца. Его имя стерли из сената, семью отняли, а самого бросили на песок арены. Теперь он не генерал, а гладиатор. Но каждый бой приближает его к трону.";
+            LevelTitle = "Предательство";
 
             GenerateMaze(width, height);
 
             PointF start = GetMapCenter();
             player.Bounds = new RectangleF(start.X - 10, start.Y - 10, 20, 20);
             player.Speed = BasePlayerSpeed;
+        }
+
+        public void ContinueStory(int width, int height)
+        {
+            if (State == GameState.Intro)
+            {
+                StartLevel(1, width, height);
+                return;
+            }
+
+            if (State == GameState.LevelTransition)
+            {
+                StartLevel(CampaignLevel + 1, width, height);
+                return;
+            }
+
+            if (State == GameState.Outro)
+                State = GameState.Menu;
         }
 
         // ================= UPDATE =================
@@ -158,17 +226,18 @@ namespace WinFormsApp1
 
             HandleCollisions();
             HandlePowerUps();
+            UpdateSlashes();
             UpdateParticles();
 
             spawnTimer++;
             powerUpTimer++;
+            levelSpawnTimer++;
 
-            int spawnRate = Math.Max(20, 100 - Level * 5);
-
-            if (spawnTimer >= spawnRate)
+            int spawnRate = Math.Max(25, 90 - CampaignLevel * 8);
+            if (enemiesSpawned < spawnTarget && levelSpawnTimer >= spawnRate)
             {
-                spawnTimer = 0;
-                SpawnEnemy(width, height);
+                levelSpawnTimer = 0;
+                SpawnCampaignEnemy(width, height);
             }
 
             if (powerUpTimer >= 900)
@@ -177,7 +246,11 @@ namespace WinFormsApp1
                 SpawnPowerUp(width, height);
             }
 
-            Level = TotalScore / 500 + 1;
+            Level = CampaignLevel;
+            EnemiesRemaining = Math.Max(0, spawnTarget - enemiesSpawned + enemies.Count);
+
+            if (enemiesSpawned >= spawnTarget && enemies.Count == 0)
+                CompleteLevel();
 
             if (player.HP <= 0)
                 State = GameState.GameOver;
@@ -391,26 +464,37 @@ namespace WinFormsApp1
         {
             foreach (var e in enemies)
             {
-                if (!e.IsBoss)
+                if (e.Type != EnemyType.Warrior && e.Type != EnemyType.Emperor)
                     continue;
 
                 e.ShootTimer--;
 
                 if (e.ShootTimer <= 0)
                 {
-                    e.ShootTimer = 70;
+                    e.ShootTimer = e.Type == EnemyType.Emperor ? 45 : 85;
 
                     PointF direction = new PointF(
                         player.Bounds.X + player.Bounds.Width / 2 - (e.Bounds.X + e.Bounds.Width / 2),
                         player.Bounds.Y + player.Bounds.Height / 2 - (e.Bounds.Y + e.Bounds.Height / 2));
 
-                    AddBullet(
-                        e.Bounds.X + e.Bounds.Width / 2,
-                        e.Bounds.Y + e.Bounds.Height / 2,
-                        direction.X,
-                        direction.Y,
-                        true,
-                        4.5f);
+                    if (e.Type == EnemyType.Emperor)
+                    {
+                        AddBullet(e.Bounds.X + e.Bounds.Width / 2, e.Bounds.Y + e.Bounds.Height / 2, direction.X, direction.Y, true, 4.8f, 1, 0);
+                        AddBullet(e.Bounds.X + e.Bounds.Width / 2, e.Bounds.Y + e.Bounds.Height / 2, direction.X - direction.Y * 0.35f, direction.Y + direction.X * 0.35f, true, 4.8f, 1, 0);
+                        AddBullet(e.Bounds.X + e.Bounds.Width / 2, e.Bounds.Y + e.Bounds.Height / 2, direction.X + direction.Y * 0.35f, direction.Y - direction.X * 0.35f, true, 4.8f, 1, 0);
+                    }
+                    else
+                    {
+                        AddBullet(
+                            e.Bounds.X + e.Bounds.Width / 2,
+                            e.Bounds.Y + e.Bounds.Height / 2,
+                            direction.X,
+                            direction.Y,
+                            true,
+                            4.2f,
+                            1,
+                            0);
+                    }
                 }
             }
         }
@@ -479,23 +563,41 @@ namespace WinFormsApp1
 
                     if (e.Bounds.IntersectsWith(bullets[j].Bounds))
                     {
-                        e.HP--;
+                        int damage = Math.Max(1, bullets[j].Damage - e.Armor);
+                        e.HP -= damage;
+
+                        if (bullets[j].SplashRadius > 0)
+                            ApplySplashDamage(bullets[j], i);
+
                         bullets.RemoveAt(j);
 
                         if (e.HP <= 0)
                         {
                             CreateExplosion(e.Bounds.X, e.Bounds.Y);
                             enemies.RemoveAt(i);
-                            AddScore(e.IsBoss ? 500 : 100);
+                            AddScore(e.IsBoss ? 1000 : 100);
 
                             if (hasVampirism && rand.Next(100) < 7)
                                 player.HP = Math.Min(100, player.HP + 3);
 
-                            OpenScoreShopIfNeeded();
                             break;
                         }
                     }
                 }
+            }
+        }
+
+        private void ApplySplashDamage(Bullet bullet, int directHitIndex)
+        {
+            PointF center = GetCenter(bullet.Bounds);
+
+            for (int i = enemies.Count - 1; i >= 0; i--)
+            {
+                if (i == directHitIndex)
+                    continue;
+
+                if (Distance(center, GetCenter(enemies[i].Bounds)) <= bullet.SplashRadius)
+                    enemies[i].HP -= Math.Max(1, bullet.Damage - enemies[i].Armor);
             }
         }
 
@@ -528,6 +630,158 @@ namespace WinFormsApp1
         }
 
         // ================= SPAWN =================
+        private void StartLevel(int level, int width, int height)
+        {
+            CampaignLevel = level;
+            State = GameState.Playing;
+            enemies.Clear();
+            bullets.Clear();
+            slashes.Clear();
+            powerUps.Clear();
+            enemiesSpawned = 0;
+            levelSpawnTimer = 999;
+            player.HP = Math.Min(100, player.HP + 20);
+
+            switch (CampaignLevel)
+            {
+                case 1:
+                    currentEnemyType = EnemyType.Tiger;
+                    spawnTarget = 10;
+                    LevelTitle = "Уровень 1: Тигры арены";
+                    break;
+                case 2:
+                    currentEnemyType = EnemyType.Warrior;
+                    spawnTarget = 15;
+                    LevelTitle = "Уровень 2: Воины с дротиками";
+                    break;
+                case 3:
+                    currentEnemyType = EnemyType.Chariot;
+                    spawnTarget = 5;
+                    LevelTitle = "Уровень 3: Колесницы";
+                    break;
+                case 4:
+                    currentEnemyType = EnemyType.Praetorian;
+                    spawnTarget = 20;
+                    LevelTitle = "Уровень 4: Преторианская стена";
+                    break;
+                default:
+                    currentEnemyType = EnemyType.Emperor;
+                    spawnTarget = 1;
+                    LevelTitle = "Уровень 5: Император";
+                    break;
+            }
+
+            EnemiesTotal = spawnTarget;
+            EnemiesRemaining = spawnTarget;
+        }
+
+        private void CompleteLevel()
+        {
+            if (CampaignLevel == 1)
+            {
+                CurrentWeapon = WeaponType.Knife;
+                StoryText = "Толпа ревет. Тигры повержены, и старый ланиста бросает герою нож: короткий, быстрый, верный в ближнем бою.";
+                State = GameState.LevelTransition;
+                return;
+            }
+
+            if (CampaignLevel == 2)
+            {
+                CurrentWeapon = WeaponType.Spear;
+                StoryText = "Воины пали. В песке арены герой поднимает копье: его удар разрывает строй и достает сразу нескольких врагов.";
+                State = GameState.LevelTransition;
+                return;
+            }
+
+            if (CampaignLevel == 3)
+            {
+                StoryText = "Колесницы разбиты. Народ впервые скандирует имя гладиатора громче имени императора.";
+                State = GameState.LevelTransition;
+                return;
+            }
+
+            if (CampaignLevel == 4)
+            {
+                StoryText = "Преторианцы отступили. Последние ворота открываются: за ними сам император.";
+                State = GameState.LevelTransition;
+                return;
+            }
+
+            StoryText = "Песок стих. Тиран пал, а гладиатор, прошедший через предательство и арену, стал правителем. Он вернул Риму честь и наконец обрел счастье.";
+            State = GameState.Outro;
+        }
+
+        private void SpawnCampaignEnemy(int width, int height)
+        {
+            PointF pos = GetGatePosition(width, height, currentEnemyType == EnemyType.Emperor ? 44 : 26);
+            Enemy enemy = CreateEnemy(currentEnemyType, pos);
+
+            enemies.Add(enemy);
+            enemiesSpawned++;
+            EnemiesRemaining = Math.Max(0, spawnTarget - enemiesSpawned + enemies.Count);
+        }
+
+        private Enemy CreateEnemy(EnemyType type, PointF pos)
+        {
+            Enemy enemy = new Enemy
+            {
+                Type = type,
+                Bounds = new RectangleF(pos.X, pos.Y, 26, 26),
+                Speed = 1.8f,
+                HP = 2,
+                ShootTimer = rand.Next(40, 90)
+            };
+
+            if (type == EnemyType.Tiger)
+            {
+                enemy.Bounds = new RectangleF(pos.X, pos.Y, 30, 20);
+                enemy.Speed = 3.2f;
+                enemy.HP = 2;
+            }
+            else if (type == EnemyType.Warrior)
+            {
+                enemy.Speed = 1.5f;
+                enemy.HP = 3;
+            }
+            else if (type == EnemyType.Chariot)
+            {
+                enemy.Bounds = new RectangleF(pos.X, pos.Y, 42, 24);
+                enemy.Speed = 4.1f;
+                enemy.HP = 5;
+            }
+            else if (type == EnemyType.Praetorian)
+            {
+                enemy.Bounds = new RectangleF(pos.X, pos.Y, 30, 30);
+                enemy.Speed = 1.25f;
+                enemy.HP = 6;
+                enemy.Armor = 1;
+            }
+            else if (type == EnemyType.Emperor)
+            {
+                enemy.Bounds = new RectangleF(pos.X, pos.Y, 48, 48);
+                enemy.Speed = 1.05f;
+                enemy.HP = 45;
+                enemy.IsBoss = true;
+                enemy.ShootTimer = 50;
+            }
+
+            return enemy;
+        }
+
+        private PointF GetGatePosition(int width, int height, float size)
+        {
+            int gate = rand.Next(4);
+
+            if (gate == 0)
+                return new PointF(width / 2f - size / 2, 8);
+            if (gate == 1)
+                return new PointF(width / 2f - size / 2, height - size - 8);
+            if (gate == 2)
+                return new PointF(8, height / 2f - size / 2);
+
+            return new PointF(width - size - 8, height / 2f - size / 2);
+        }
+
         private void SpawnEnemy(int width, int height)
         {
             PointF pos = GetFreePosition(width, height, 20);
@@ -612,24 +866,69 @@ namespace WinFormsApp1
             if (State != GameState.Playing) return;
             if (shootCooldown > 0) return;
 
+            if (CurrentWeapon == WeaponType.Gladius || CurrentWeapon == WeaponType.Knife)
+            {
+                AddSlash(dx, dy);
+                shootCooldown = CurrentWeapon == WeaponType.Knife ? 6 : 9;
+                return;
+            }
+
             AddBullet(
                 player.Bounds.X + player.Bounds.Width / 2,
                 player.Bounds.Y + player.Bounds.Height / 2,
                 dx,
                 dy,
                 false,
-                6f);
+                7f,
+                2,
+                55);
 
-            if (hasMultiShot)
-            {
-                AddBullet(player.Bounds.X + player.Bounds.Width / 2, player.Bounds.Y + player.Bounds.Height / 2, dx - dy * 0.35f, dy + dx * 0.35f, false, 6f);
-                AddBullet(player.Bounds.X + player.Bounds.Width / 2, player.Bounds.Y + player.Bounds.Height / 2, dx + dy * 0.35f, dy - dx * 0.35f, false, 6f);
-            }
-
-            shootCooldown = _shootInterval;
+            shootCooldown = 14;
         }
 
-        private void AddBullet(float x, float y, float dx, float dy, bool isEnemyBullet, float speed)
+        private void AddSlash(float dx, float dy)
+        {
+            float range = CurrentWeapon == WeaponType.Knife ? 34 : 42;
+            float size = CurrentWeapon == WeaponType.Knife ? 30 : 42;
+            PointF direction = new PointF(dx, dy);
+            Normalize(ref direction);
+
+            RectangleF slash = new RectangleF(
+                player.Bounds.X + player.Bounds.Width / 2 + direction.X * range - size / 2,
+                player.Bounds.Y + player.Bounds.Height / 2 + direction.Y * range - size / 2,
+                size,
+                size);
+
+            slashes.Add(new Slash { Bounds = slash, Life = 5 });
+
+            for (int i = enemies.Count - 1; i >= 0; i--)
+            {
+                if (slashes[slashes.Count - 1].Bounds.IntersectsWith(enemies[i].Bounds))
+                {
+                    enemies[i].HP -= CurrentWeapon == WeaponType.Knife ? 2 : 1;
+
+                    if (enemies[i].HP <= 0)
+                    {
+                        CreateExplosion(enemies[i].Bounds.X, enemies[i].Bounds.Y);
+                        enemies.RemoveAt(i);
+                        AddScore(100);
+                    }
+                }
+            }
+        }
+
+        private void UpdateSlashes()
+        {
+            for (int i = slashes.Count - 1; i >= 0; i--)
+            {
+                slashes[i].Life--;
+
+                if (slashes[i].Life <= 0)
+                    slashes.RemoveAt(i);
+            }
+        }
+
+        private void AddBullet(float x, float y, float dx, float dy, bool isEnemyBullet, float speed, int damage, float splashRadius)
         {
             PointF direction = new PointF(dx, dy);
             Normalize(ref direction);
@@ -643,7 +942,9 @@ namespace WinFormsApp1
                 ),
                 dx = direction.X * speed,
                 dy = direction.Y * speed,
-                IsEnemyBullet = isEnemyBullet
+                IsEnemyBullet = isEnemyBullet,
+                Damage = damage,
+                SplashRadius = splashRadius
             });
         }
 
