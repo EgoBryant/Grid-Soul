@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
+using GridSoul.Controllers;
+using GridSoul.Models;
 
-namespace WinFormsApp1
+namespace GridSoul.Views
 {
     public partial class Form1 : Form
     {
-        private GameModel game = new GameModel();
+        private GameManager game = new GameManager();
+        private GameRenderer gameRenderer;
         private System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
 
         private bool up, down, left, right;
@@ -29,7 +33,8 @@ namespace WinFormsApp1
             KeyPreview = true;
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
-            LoadSprites();
+
+            gameRenderer = new GameRenderer(game);
 
             timer.Interval = 20;
             timer.Tick += GameLoop;
@@ -38,10 +43,6 @@ namespace WinFormsApp1
             this.KeyDown += Form1_KeyDown;
             this.KeyUp += Form1_KeyUp;
             this.MouseDown += Form1_MouseDown;
-
-            // инициализация дождя
-            for (int i = 0; i < 30; i++)
-                rain.Add(RandomString(20));
         }
 
         private void LoadSprites()
@@ -105,37 +106,16 @@ namespace WinFormsApp1
         private void GameLoop(object? sender, EventArgs e)
         {
             if (game.State == GameState.Playing)
-            {
                 game.Update(up, down, left, right, ClientSize.Width, ClientSize.Height);
-            }
 
-            AnimateRain();
+            gameRenderer.AnimateRain();
             Invalidate();
         }
 
         // ===================== DRAW =====================
         protected override void OnPaint(PaintEventArgs e)
         {
-            Graphics g = e.Graphics;
-
-            if (game.State == GameState.Start || game.State == GameState.Menu)
-                DrawMenu(g);
-            else if (game.State == GameState.Intro)
-                DrawStoryScreen(g, "ПРЕДАТЕЛЬСТВО");
-            else if (game.State == GameState.Playing)
-                DrawGame(g);
-            else if (game.State == GameState.Shop)
-                DrawShop(g);
-            else if (game.State == GameState.LevelSelect)
-                DrawLevelSelect(g);
-            else if (game.State == GameState.Pause)
-                DrawPause(g);
-            else if (game.State == GameState.LevelTransition)
-                DrawStoryScreen(g, game.LevelTitle);
-            else if (game.State == GameState.Outro)
-                DrawStoryScreen(g, "СВОБОДА РИМА");
-            else if (game.State == GameState.GameOver)
-                DrawGameOver(g);
+            gameRenderer.Render(e.Graphics, game.State, ClientSize.Width, ClientSize.Height);
         }
 
         // ===================== MENU =====================
@@ -936,90 +916,23 @@ namespace WinFormsApp1
         // ===================== INPUT =====================
         private void Form1_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Escape)
-            {
-                if (game.State == GameState.Playing)
-                {
-                    game.PauseGame();
-                    timer.Stop();
-                    Invalidate();
-                }
-                else if (game.State == GameState.Pause)
-                {
-                    game.ResumeGame();
-                    timer.Start();
-                    Invalidate();
-                }
-                return;
-            }
-
-            // запуск / рестарт
-            if (e.KeyCode == Keys.Enter)
-            {
-                if (game.State == GameState.Start || game.State == GameState.Menu)
-                {
-                    game.StartGame(ClientSize.Width, ClientSize.Height);
-                }
-                else if (game.State == GameState.GameOver)
-                {
-                    game.ReturnToLevelSelect();
-                }
-                else if (game.State == GameState.Intro || game.State == GameState.LevelTransition || game.State == GameState.Outro)
-                {
-                    game.ContinueStory(ClientSize.Width, ClientSize.Height);
-                }
-            }
-
-            if (e.KeyCode == Keys.P)
-            {
-                return;
-            }
-
-            if (game.State == GameState.Shop)
-            {
-                if (e.KeyCode == Keys.D1 || e.KeyCode == Keys.NumPad1) game.BuyFireRate();
-                if (e.KeyCode == Keys.D2 || e.KeyCode == Keys.NumPad2) game.BuyMultiShot();
-                if (e.KeyCode == Keys.D3 || e.KeyCode == Keys.NumPad3) game.BuyVampirism();
-                if (e.KeyCode == Keys.D4 || e.KeyCode == Keys.NumPad4) game.BuyDash();
-                return;
-            }
-
-            if (game.State != GameState.Playing) return;
-
-            if (game.CampaignLevel == 5)
-            {
-                if (e.KeyCode == Keys.Q)
-                    game.ToggleWeapon();
-
-                if (e.KeyCode == Keys.D1 || e.KeyCode == Keys.NumPad1)
-                    game.CurrentWeapon = WeaponType.Pilum;
-
-                if (e.KeyCode == Keys.D2 || e.KeyCode == Keys.NumPad2)
-                    game.CurrentWeapon = WeaponType.Falx;
-            }
+            game.HandleInput(e.KeyCode, ClientSize.Width, ClientSize.Height);
 
             if (e.KeyCode == Keys.W) up = true;
             if (e.KeyCode == Keys.S) down = true;
             if (e.KeyCode == Keys.A) left = true;
             if (e.KeyCode == Keys.D) right = true;
-
-            if (e.KeyCode == Keys.Up) game.Shoot(0, -1);
-            if (e.KeyCode == Keys.Down) game.Shoot(0, 1);
-            if (e.KeyCode == Keys.Left) game.Shoot(-1, 0);
-            if (e.KeyCode == Keys.Right) game.Shoot(1, 0);
-            if (e.KeyCode == Keys.Space) game.TryDash();
         }
 
         private void Form1_MouseDown(object? sender, MouseEventArgs e)
         {
             if (game.State == GameState.LevelSelect)
             {
-                for (int i = 0; i < levelButtons.Count; i++)
+                for (int i = 0; i < gameRenderer.LevelButtons.Count; i++)
                 {
-                    if (levelButtons[i].Contains(e.Location) && i + 1 <= game.MaxUnlockedLevel)
+                    if (gameRenderer.LevelButtons[i].Contains(e.Location) && i + 1 <= game.MaxUnlockedLevel)
                     {
                         game.SelectLevel(i + 1, ClientSize.Width, ClientSize.Height);
-                        timer.Start();
                         Invalidate();
                         return;
                     }
@@ -1029,19 +942,17 @@ namespace WinFormsApp1
             if (game.State != GameState.Pause)
                 return;
 
-            if (resumeButton.Contains(e.Location))
+            if (gameRenderer.ResumeButton.Contains(e.Location))
             {
                 game.ResumeGame();
-                timer.Start();
                 Invalidate();
             }
-            else if (levelSelectButton.Contains(e.Location))
+            else if (gameRenderer.LevelSelectButton.Contains(e.Location))
             {
                 game.ReturnToLevelSelect();
-                timer.Start();
                 Invalidate();
             }
-            else if (exitButton.Contains(e.Location))
+            else if (gameRenderer.ExitButton.Contains(e.Location))
             {
                 Close();
             }

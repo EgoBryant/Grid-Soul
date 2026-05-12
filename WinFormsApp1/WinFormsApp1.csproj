@@ -12,6 +12,9 @@
     <Content Include="Assets\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Update="Assets\enemy_arrow.png">
+      <TargetPath>enemy_arrow.png</TargetPath>
+    </Content>
   </ItemGroup>
 
 </Project>

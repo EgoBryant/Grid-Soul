@@ -1,4 +1,4 @@
-﻿namespace WinFormsApp1
+﻿namespace GridSoul.Views
 {
     partial class Form1
     {
